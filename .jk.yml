@@ -1,0 +1,15 @@
+---
+build:
+  commands:
+    - echo build
+    # - .venv/bin/python -m build . --wheel
+  pre-conditions:
+    env:
+      - WORKSPACE
+      # - JK_UNDEFINED
+    validators:
+      - ./project-env-valid.sh
+
+run:
+  commands:
+    - echo run
