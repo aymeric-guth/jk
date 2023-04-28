@@ -1,57 +1,81 @@
 ---
-env:
-  ...
-
-config:
-  jk_path: $JK_LIBDIR
-
-pre-conditions:
-  env: &pre-conditions-env-global
-    - WORKSPACE
-  python: &pre-conditions-python
+pre-conditions: &pre-conditions-python
+  env:
+    WORKSPACE:
+    PROJECT_NAME:
+    VIRTUAL_ENV:
+  validators:
+    - '[ "$PWD" = "$WORKSPACE" ]'
 
 executors:
-  shell: &shell
+  sh: &sh
     path: /bin/sh
     options: -c
-  # python: &python
-  #   path: $WORKSPACE/.venv/bin/python
-  #   options: -u
+    quote: true
+  python: &python
+    path: $WORKSPACE/.venv/bin/python
+    options: -u
+    quote: false
+  zsh: &zsh
+    path: /opt/local/bin/zsh
+    options: -c
+    quote: true
 
 tasks:
-  build:
-    cwd: ...
-    executor: *shell
-    cmd: !include 'cmake-c'
-    # script: !include 'python'
-    # script: /path/to/script.sh
-    pre-conditions:
-      env:
-        # <<: *pre-conditions-env-global
-        key: value
-# - WORKSPACE
-# - PROJECT_NAME
-# env: !import 'cmake-c':
-# - test
-#
-      # validators:
-      #   - '[ "$PWD" = "$WORKSPACE" ]'
-        # - ./project-env-valid.sh
-    on_success: # -> task ?
-      ...
-    on_failure: # -> task ?
-      ...
-
   run:
-    executor: *shell
+    executor: *sh
     cmd: echo run
-
-  config:
-    executor: *shell
-    cmd: echo config
     pre-conditions:
-    #   env:
-    #     - WORKSPACE
-    #     - PROJECT_NAME
+      <<: *pre-conditions-python
       validators:
         - '[ "$PWD" = "$WORKSPACE" ]'
+        - '[ -f .venv/bin/python ]'
+
+  deploy:
+    executor: *python
+    cmd: -m pip install --force-reinstall dist/jk-0.0.1-py3-none-any.whl
+    pre-conditions:
+      <<: *pre-conditions-python
+      validators:
+        - '[ "$PWD" = "$WORKSPACE" ]'
+        - '[ -f .venv/bin/python ]'
+
+  build:
+    executor: *python
+    cmd: -m build . --wheel
+    pre-conditions:
+      <<: *pre-conditions-python
+      validators:
+        - '[ "$PWD" = "$WORKSPACE" ]'
+        - '[ -f .venv/bin/python ]'
+
+  config:
+    executor: *sh
+    cmd: $EDITOR .jk.yml
+    pre-conditions: *pre-conditions-python
+
+  clean:
+    executor: *sh
+    cmd: |
+      : \
+      && rm -rf *.egg-info \
+      && rm -rf dist \
+      && rm -rf build \
+      && rm -rf .pytest_cache \
+      && rm -rf .mypy_cache \
+      && find . -type d -name "__pycache__" -print0 | xargs -0 -I {} /bin/rm -rf "{}" \
+      && :
+    pre-conditions: *pre-conditions-python
+
+  env:
+    executor: *zsh
+    cmd: |
+      : \
+      && [ -d .venv ] && rm -rf .venv \
+      && python3 -m virtualenv .venv \
+      && [ -f requirements.txt ] \
+      && .venv/bin/python -m pip install -r requirements.txt \
+      && [ -n "${commands[direnv]}" ] \
+      && direnv reload \
+      && :
+    pre-conditions: *pre-conditions-python

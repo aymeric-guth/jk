@@ -8,14 +8,15 @@ from typing import Any
 import json
 import pprint as ppprint
 import pathlib
-import ipdb
+from typing import Self
 
+# import ipdb
 from yaml import CLoader as Loader, load
 
 
 __version__ = "0.0.1"
 loglevel = os.getenv("JK_LOGLEVEL")
-if loglevel is None:
+if not loglevel:
     loglevel = logging.ERROR
 logging.basicConfig(level=loglevel)
 
@@ -29,7 +30,7 @@ class Cmd:
     value: str
 
     @classmethod
-    def from_dict(cls, cmd: str):
+    def from_dict(cls, cmd: str) -> Self:
         return Cmd(value=cmd.rstrip().lstrip())
 
     def to_sh(self) -> list[str]:
@@ -42,7 +43,7 @@ class PreConditions:
     validators: list[str]
 
     @classmethod
-    def from_dict(cls, pre_conditions: dict[Any, Any]):
+    def from_dict(cls, pre_conditions: dict[str, Any]) -> Self:
         return PreConditions(
             env=pre_conditions.get("env", []),
             validators=pre_conditions.get("validators", []),
@@ -56,7 +57,7 @@ class Executor:
     quote: bool
 
     @classmethod
-    def from_dict(cls, executor: dict[Any, Any]):
+    def from_dict(cls, executor: dict[Any, Any]) -> Self:
         path = executor.get("path", "")
         if not path:
             raise ValidationError(f"`path` is not defined for `executor`: {executor}")
@@ -79,11 +80,11 @@ class Task:
     pre_conditions: PreConditions
 
     @classmethod
-    def from_dict(cls, verb: str, task: dict[Any, Any]):
+    def from_dict(cls, verb: str, task: dict[Any, Any]) -> Self:
         cmd = task.get("cmd", "")
         if not cmd:
             raise ValidationError(f"`cmd` is not defined for `task` {task}")
-        executor = task.get("executor", "")
+        executor: dict[str, Any] = task.get("executor", "")
         if not executor:
             raise ValidationError(f"`executor` is not defined for `task` {task}")
         return Task(
@@ -118,74 +119,85 @@ def get_verb(prompt: list[str]) -> str:
 # pp = ppprint.PrettyPrinter(indent=4, compact=False)
 pp = lambda o: ppprint.pformat(o, indent=4, width=140)
 
-### sanity-check
-if len(sys.argv) != 2:
-    raise SystemExit("Usage: jk <command>")
 
-### user-input
-verb = get_verb(sys.argv)
+def main() -> int:
+    ### sanity-check
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: jk <command>")
 
-jk_local_conig = os.getenv("JK_LOCAL_CONFIG")
-if jk_local_conig is None:
-    jk_local_conig = ".jk.yml"
+    ### user-input
+    verb = get_verb(sys.argv)
 
-### config load
-with open(pathlib.Path().cwd() / jk_local_conig) as f:
-    ### yaml format validation for free
-    data = load(f, Loader=Loader)
+    jk_local_config = os.getenv("JK_LOCAL_CONFIG")
+    if jk_local_config is None:
+        jk_local_config = ".jk.yml"
 
-logging.info(f"config={pprint(data)}")
+    ### config load
+    with open(pathlib.Path().cwd() / jk_local_config) as f:
+        ### yaml format validation for free
+        data = load(f, Loader=Loader)
 
-### config level sanity check
-if not (executors := data.get("executors", "")):
-    raise SystemExit("missing mapping: `executors`")
-if len(executors) < 1:
-    raise SystemExit("at least 1 `executor` must be defined")
+    logging.info(f"config={pprint(data)}")
 
-if not (tasks := data.get("tasks", "")):
-    raise SystemExit("missing mapping: `tasks`")
-if len(tasks) < 1:
-    raise SystemExit("at least 1 `task` must be defined")
+    ### config level sanity check
+    if not (executors := data.get("executors", "")):
+        raise SystemExit("missing mapping: `executors`")
+    if len(executors) < 1:
+        raise SystemExit("at least 1 `executor` must be defined")
 
-logging.info(f"tasks={pprint(tasks)}")
+    if not (tasks := data.get("tasks", "")):
+        raise SystemExit("missing mapping: `tasks`")
+    if len(tasks) < 1:
+        raise SystemExit("at least 1 `task` must be defined")
 
-### executors validation
-executors = [Executor.from_dict(executor) for executor in executors.values()]
-logging.info(
-    "executors={}".format("\n".join([repr(executor) for executor in executors]))
-)
+    logging.info(f"tasks={pprint(tasks)}")
 
-### match user `verb` against config
-if verb not in {i for i in tasks}:
-    raise SystemExit(f"`verb`: {verb} is not defined in config")
+    ### executors validation
+    executors = [Executor.from_dict(executor) for executor in executors.values()]
+    logging.info(
+        "executors={}".format("\n".join([repr(executor) for executor in executors]))
+    )
 
-### sanity check `cmd` is defined for `verb`
-task = Task.from_dict(verb=verb, task=tasks.get(verb))
-logging.info(f"task={pp(task)}")
+    ### match user `verb` against config
+    if verb not in {i for i in tasks}:
+        raise SystemExit(f"`verb`: {verb} is not defined in config")
 
-### pre-condition
-logging.info(f"{task.pre_conditions=}")
+    ### sanity check `cmd` is defined for `verb`
+    task = Task.from_dict(verb=verb, task=tasks.get(verb))
+    logging.info(f"task={pp(task)}")
 
-### pre-conditions, env
-logging.info(f"env={pp(task.pre_conditions.env)}")
-for identifier in task.pre_conditions.env:
-    logging.info(f"{identifier=}")
-    if os.getenv(check_sh_identifier(identifier)) is None:
-        raise ValidationError(
-            f"pre-condition failed for environment variable {identifier=}, undefined"
-        )
+    ### pre-condition
+    logging.info(f"{task.pre_conditions=}")
 
-### pre-conditions, validators
-for validator in task.pre_conditions.validators:
-    logging.info(f"validator={pp(validator)}")
-    proc = subprocess.Popen(["sh", "-c", validator], env=os.environ)
+    ### pre-conditions, env
+    logging.info(f"env={pp(task.pre_conditions.env)}")
+    for identifier in task.pre_conditions.env:
+        logging.info(f"{identifier=}")
+        if not os.getenv(check_sh_identifier(identifier)):
+            raise ValidationError(
+                f"pre-condition failed for environment variable {identifier=}, undefined"
+            )
+
+    ### pre-conditions, validators
+    for validator in task.pre_conditions.validators:
+        logging.info(f"validator={pp(validator)}")
+        proc = subprocess.Popen(["sh", "-c", validator], env=os.environ)
+        while proc.poll() is None:
+            ...
+        if proc.returncode != 0:
+            raise SystemExit(
+                f"pre-condition failed for {validator=}, non-zero return code"
+            )
+
+    ### task execution
+    logging.info(f"task={pp(task)}")
+    logging.info(f"cmd={task.to_sh()}")
+
+    proc = subprocess.Popen([*task.to_sh()], env=os.environ)
     while proc.poll() is None:
         ...
-    if proc.returncode != 0:
-        raise SystemExit(f"pre-condition failed for {validator=}, non-zero return code")
+    return proc.returncode
 
-### task execution
-proc = subprocess.Popen([*task.to_sh()], env=os.environ)
-while proc.poll() is None:
-    ...
-raise SystemExit(proc.returncode)
+
+if __name__ == "__main__":
+    raise SystemExit(main())
