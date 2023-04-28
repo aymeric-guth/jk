@@ -14,7 +14,7 @@ from yaml import CLoader as Loader, load
 
 
 __version__ = "0.0.1"
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 class ValidationError(Exception):
@@ -22,18 +22,27 @@ class ValidationError(Exception):
 
 
 @dataclass(frozen=True, repr=True)
+class Cmd:
+    value: str
+
+    @classmethod
+    def from_dict(cls, cmd: str):
+        return Cmd(value=cmd.rstrip().lstrip())
+
+    def to_sh(self) -> list[str]:
+        return shlex.split(self.value)
+
+
+@dataclass(frozen=True, repr=True)
 class PreConditions:
     env: list[str]
-    validators: list[list[str]]
+    validators: list[str]
 
     @classmethod
     def from_dict(cls, pre_conditions: dict[Any, Any]):
         return PreConditions(
             env=pre_conditions.get("env", []),
-            validators=pre_conditions.get("validators", [])
-            # validators=[
-            #     f"'{validator}'" for validator in pre_conditions.get("validators", [])
-            # ],
+            validators=pre_conditions.get("validators", []),
         )
 
 
@@ -41,6 +50,7 @@ class PreConditions:
 class Executor:
     path: str
     options: str
+    quote: bool
 
     @classmethod
     def from_dict(cls, executor: dict[Any, Any]):
@@ -52,7 +62,7 @@ class Executor:
         if not os.access(_path, os.X_OK):
             raise SystemExit(f"`executor` {executor} is not executable")
         options = executor.get("options", "")
-        return Executor(path=_path, options=options)
+        return Executor(path=_path, options=options, quote=executor.get("quote", False))
 
     def to_sh(self) -> list[str]:
         return [self.path, *shlex.split(self.options)]
@@ -61,7 +71,7 @@ class Executor:
 @dataclass(frozen=True, repr=True)
 class Task:
     verb: str
-    cmd: str
+    cmd: Cmd
     executor: Executor
     pre_conditions: PreConditions
 
@@ -75,13 +85,16 @@ class Task:
             raise ValidationError(f"`executor` is not defined for `task` {task}")
         return Task(
             verb=verb,
-            cmd=cmd,
+            cmd=Cmd.from_dict(cmd),
             executor=Executor.from_dict(executor),
             pre_conditions=PreConditions.from_dict(task.get("pre-conditions", {})),
         )
 
     def to_sh(self) -> list[str]:
-        return [*self.executor.to_sh(), *shlex.split(f"'{self.cmd.rstrip().lstrip()}'")]
+        if self.executor.quote:
+            return [*self.executor.to_sh(), self.cmd.value]
+        else:
+            return [*self.executor.to_sh(), *self.cmd.to_sh()]
 
 
 def pprint(d: dict[Any, Any]) -> str:
@@ -135,7 +148,6 @@ logging.info(f"tasks={pprint(tasks)}")
 
 ### executors validation
 executors = [Executor.from_dict(executor) for executor in executors.values()]
-
 logging.info(
     "executors={}".format("\n".join([repr(executor) for executor in executors]))
 )
@@ -148,35 +160,29 @@ if verb not in {i for i in tasks}:
 task = Task.from_dict(verb=verb, task=tasks.get(verb))
 logging.info(f"task={pp(task)}")
 
-### merge pre-condition class
+### pre-condition
 logging.info(f"{task.pre_conditions=}")
-for var in task.pre_conditions.env:
-    logging.info(f"check {var=!r}")
-    if os.getenv(check_sh_identifier(var)) is None:
-        raise SystemExit(f"pre-condition failed for {var!r}")
 
+### pre-conditions, env
+logging.info(f"env={pp(task.pre_conditions.env)}")
+for identifier in task.pre_conditions.env:
+    logging.info(f"{identifier=}")
+    if os.getenv(check_sh_identifier(identifier)) is None:
+        raise ValidationError(
+            f"pre-condition failed for environment variable {identifier=}, undefined"
+        )
+
+### pre-conditions, validators
 for validator in task.pre_conditions.validators:
     logging.info(f"validator={pp(validator)}")
-    print(["sh", "-c", validator])
     proc = subprocess.Popen(["sh", "-c", validator], env=os.environ)
     while proc.poll() is None:
         ...
     if proc.returncode != 0:
         raise SystemExit(f"pre-condition failed for {validator=}, non-zero return code")
 
-    # if subprocess.run(validator, env=os.environ, shell=True).returncode != 0:
-    #     raise SystemExit(f"pre-condition failed for {validator=}, non-zero return code")
-
-    ### file exists, file is executable, shbang?
-    # if not os.path.exists(validator):
-    #     raise SystemExit(
-    #         f"pre-condition failed for {validator=}, file does not exists"
-    #     )
-    # if not os.access(validator, os.X_OK):
-    #     raise SystemExit(
-    #         f"pre-condition failed for {validator=}, not executable"
-    #     )
-    # logging.info(f"running {validator=}")
-    #     )
-
-process = subprocess.Popen(task.to_sh(), env=os.environ)
+### task execution
+proc = subprocess.Popen([*task.to_sh()], env=os.environ)
+while proc.poll() is None:
+    ...
+raise SystemExit(proc.returncode)
