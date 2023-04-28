@@ -6,3 +6,4 @@ __pycache__
 .func.sh
 .tmuxp.yaml
 jk.egg-info
+Taskfile.yml

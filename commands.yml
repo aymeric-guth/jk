@@ -1,0 +1,69 @@
+---
+config:
+  executors:
+    ansible:
+      # path to executable
+      # if not defined defaults to `which executor_name`
+      path: ~/
+      # additional options passed at executable invocation
+      options: --vault=./.vault-pass --inventory=./inventory/00_inventory.yml
+    shell:
+      path: ~/
+      options: -whatever
+      # executor's verbosity level
+      verbosity: DEBUG
+    # remote execution, theis might be too far, too close to ansible
+    ssh:
+      ...
+  # executor's verbosity level global
+  verbosity: INFO
+  # run either as a daemon or a blocking process
+  # daemon could be polled as a PRE-PROMPT command
+  # daemon is configured to either keep a reference to original calling process stdout and prints output as it executes
+  # or more on a log/message mechanism, the frontend will querry it based on the user input
+  runtime: detached | attached
+
+verbs:
+  build:
+  run:
+  clean:
+  status:
+  test:
+    description: |
+      # DESCRIPTION
+      - this verb is used to execute context text runner
+      ## ROLE
+      - This text will be displayed rendered when user calls `help`
+
+targets:
+  docker:
+    # path to executor's files, ansible: roles, shell: .sh, python: .py
+    # path expressed as an environment variable
+    # APP_SERVICENAME_PATH
+    path: ~/
+    # APP_SERVICENAME_EXECUTOR
+    executor: ansible
+    build:
+      # optional override for individual verbs
+      path: ~/...
+      executor: ansible
+      # checks alias in namespace don't clash, same alias in same namespace = invalid config
+      alias: b
+      description: |
+        $$ Called for help messages $$
+        ```shell
+        # support for markdown langage specific syntax highlighting embedding
+        app build docker --options
+        ```
+      # execution pre-conditions
+      dependencies:
+        # required environment variables that need to be defined for execution
+        environment:
+          - VAR1
+          - VAR2
+        # scripts that validates user environment before execution
+        validator:
+          - ...
+    # this verb uses target's defaut values for path and executor, if none is provided the config file is considered non-valid
+    run:
+    clean:
