@@ -26,3 +26,11 @@ jk clean
 # re-install virtualenv + dev dependencies, requires zsh, direnv
 jk env
 ```
+
+## Environment Variables
+
+```shell
+# set logging verbosity, DEBUG, INFO, ERROR, ...
+JK_LOGLEVEL=INFO
+```
+
