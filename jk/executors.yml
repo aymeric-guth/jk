@@ -1,0 +1,14 @@
+---
+shell:
+  path: ~/...
+  options: -c
+  env: ...
+python:
+  path: ~/...
+  options: -u
+  env: ...
+  pre-conditions:
+    env:
+      VIRTUAL_ENV:
+    validators:
+      - '[ -f .venv/bin/python ]'
