@@ -8,6 +8,7 @@ from typing import Any
 import json
 import pprint as ppprint
 import pathlib
+import ipdb
 
 from yaml import CLoader as Loader, load
 
@@ -29,9 +30,10 @@ class PreConditions:
     def from_dict(cls, pre_conditions: dict[Any, Any]):
         return PreConditions(
             env=pre_conditions.get("env", []),
-            validators=[
-                f"'{validator}'" for validator in pre_conditions.get("validators", [])
-            ],
+            validators=pre_conditions.get("validators", [])
+            # validators=[
+            #     f"'{validator}'" for validator in pre_conditions.get("validators", [])
+            # ],
         )
 
 
@@ -45,10 +47,12 @@ class Executor:
         path = executor.get("path", "")
         if not path:
             raise ValidationError(f"`path` is not defined for `executor`: {executor}")
-        if not os.access(path, os.X_OK):
+
+        _path = os.path.expandvars(path)
+        if not os.access(_path, os.X_OK):
             raise SystemExit(f"`executor` {executor} is not executable")
         options = executor.get("options", "")
-        return Executor(path=path, options=options)
+        return Executor(path=_path, options=options)
 
     def to_sh(self) -> list[str]:
         return [self.path, *shlex.split(self.options)]
@@ -153,7 +157,13 @@ for var in task.pre_conditions.env:
 
 for validator in task.pre_conditions.validators:
     logging.info(f"validator={pp(validator)}")
-    subprocess.Popen(["sh", "-c", validator], env=os.environ)
+    print(["sh", "-c", validator])
+    proc = subprocess.Popen(["sh", "-c", validator], env=os.environ)
+    while proc.poll() is None:
+        ...
+    if proc.returncode != 0:
+        raise SystemExit(f"pre-condition failed for {validator=}, non-zero return code")
+
     # if subprocess.run(validator, env=os.environ, shell=True).returncode != 0:
     #     raise SystemExit(f"pre-condition failed for {validator=}, non-zero return code")
 
