@@ -14,7 +14,10 @@ from yaml import CLoader as Loader, load
 
 
 __version__ = "0.0.1"
-logging.basicConfig(level=logging.INFO)
+loglevel = os.getenv("JK_LOGLEVEL")
+if loglevel is None:
+    loglevel = logging.ERROR
+logging.basicConfig(level=loglevel)
 
 
 class ValidationError(Exception):
