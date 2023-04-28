@@ -4,9 +4,12 @@ import subprocess
 import shlex
 import logging
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Any
+import json
+import pprint as ppprint
+import pathlib
 
-from yaml import CLoader as Loader, CDumper as Dumper, load
+from yaml import CLoader as Loader, load
 
 
 __version__ = "0.0.1"
@@ -20,13 +23,15 @@ class ValidationError(Exception):
 @dataclass(frozen=True, repr=True)
 class PreConditions:
     env: list[str]
-    validators: list[str]
+    validators: list[list[str]]
 
     @classmethod
-    def from_json(cls, pre_conditions: dict[Any, Any]):
+    def from_dict(cls, pre_conditions: dict[Any, Any]):
         return PreConditions(
             env=pre_conditions.get("env", []),
-            validators=pre_conditions.get("validators", []),
+            validators=[
+                f"'{validator}'" for validator in pre_conditions.get("validators", [])
+            ],
         )
 
 
@@ -36,7 +41,7 @@ class Executor:
     options: str
 
     @classmethod
-    def from_json(cls, executor: dict[Any, Any]):
+    def from_dict(cls, executor: dict[Any, Any]):
         path = executor.get("path", "")
         if not path:
             raise ValidationError(f"`path` is not defined for `executor`: {executor}")
@@ -64,16 +69,22 @@ class Task:
         executor = task.get("executor", "")
         if not executor:
             raise ValidationError(f"`executor` is not defined for `task` {task}")
-
         return Task(
             verb=verb,
             cmd=cmd,
-            executor=Executor.from_json(executor),
-            pre_conditions=PreConditions.from_json(task.get("pre-conditions", {})),
+            executor=Executor.from_dict(executor),
+            pre_conditions=PreConditions.from_dict(task.get("pre-conditions", {})),
         )
 
-    def to_sh(self) -> str:
+    def to_sh(self) -> list[str]:
         return [*self.executor.to_sh(), *shlex.split(f"'{self.cmd.rstrip().lstrip()}'")]
+
+
+def pprint(d: dict[Any, Any]) -> str:
+    try:
+        return json.dumps(d, indent=4)
+    except json.JSONDecodeError:
+        return str(d)
 
 
 def check_sh_identifier(identifier: str) -> str:
@@ -84,20 +95,26 @@ def get_verb(prompt: list[str]) -> str:
     return prompt[1]
 
 
+# pp = ppprint.PrettyPrinter(indent=4, compact=False)
+pp = lambda o: ppprint.pformat(o, indent=4, width=140)
+
 ### sanity-check
 if len(sys.argv) != 2:
-    raise SystemExit("Usage: jk.py <command>")
+    raise SystemExit("Usage: jk <command>")
 
 ### user-input
 verb = get_verb(sys.argv)
 
+jk_local_conig = os.getenv("JK_LOCAL_CONFIG")
+if jk_local_conig is None:
+    jk_local_conig = ".jk.yml"
+
 ### config load
-with open(".jk.yml") as f:
+with open(pathlib.Path().cwd() / jk_local_conig) as f:
     ### yaml format validation for free
     data = load(f, Loader=Loader)
 
-logging.info(f"{data=}")
-
+logging.info(f"config={pprint(data)}")
 
 ### config level sanity check
 if not (executors := data.get("executors", "")):
@@ -109,12 +126,15 @@ if not (tasks := data.get("tasks", "")):
     raise SystemExit("missing mapping: `tasks`")
 if len(tasks) < 1:
     raise SystemExit("at least 1 `task` must be defined")
-logging.info(f"{tasks=}")
+
+logging.info(f"tasks={pprint(tasks)}")
 
 ### executors validation
-executors = [Executor.from_json(executor) for executor in executors.values()]
+executors = [Executor.from_dict(executor) for executor in executors.values()]
 
-logging.info(f"{executors=}")
+logging.info(
+    "executors={}".format("\n".join([repr(executor) for executor in executors]))
+)
 
 ### match user `verb` against config
 if verb not in {i for i in tasks}:
@@ -122,17 +142,20 @@ if verb not in {i for i in tasks}:
 
 ### sanity check `cmd` is defined for `verb`
 task = Task.from_dict(verb=verb, task=tasks.get(verb))
-
+logging.info(f"task={pp(task)}")
 
 ### merge pre-condition class
 logging.info(f"{task.pre_conditions=}")
 for var in task.pre_conditions.env:
-    logging.info(f"check {var=}")
+    logging.info(f"check {var=!r}")
     if os.getenv(check_sh_identifier(var)) is None:
-        raise SystemExit(f"pre-condition failed for {var}")
+        raise SystemExit(f"pre-condition failed for {var!r}")
 
 for validator in task.pre_conditions.validators:
-    logging.info(f"{validator=}")
+    logging.info(f"validator={pp(validator)}")
+    subprocess.Popen(["sh", "-c", validator], env=os.environ)
+    # if subprocess.run(validator, env=os.environ, shell=True).returncode != 0:
+    #     raise SystemExit(f"pre-condition failed for {validator=}, non-zero return code")
 
     ### file exists, file is executable, shbang?
     # if not os.path.exists(validator):
@@ -144,15 +167,6 @@ for validator in task.pre_conditions.validators:
     #         f"pre-condition failed for {validator=}, not executable"
     #     )
     # logging.info(f"running {validator=}")
-    # if subprocess.run(validator, env=os.environ).returncode != 0:
-    #     raise SystemExit(
-    #         f"pre-condition failed for {validator=}, non-zero return code"
     #     )
 
-print(task.to_sh())
-subprocess.Popen(task.to_sh(), env=os.environ)
-
-# ( project-env-valid ) || return 1
-# [ ! -f .venv/bin/python ] && return 1
-# [ -z "$VIRTUAL_ENV" ] && return 1
-# .venv/bin/python -m build . --wheel || return 1
+process = subprocess.Popen(task.to_sh(), env=os.environ)

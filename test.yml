@@ -1,0 +1,8 @@
+---
+default: &default
+  key1: value1
+  key2: value2
+
+custom:
+  <<: *default
+  key2: value3

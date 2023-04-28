@@ -2,22 +2,56 @@
 env:
   ...
 
+config:
+  jk_path: $JK_LIBDIR
+
+pre-conditions:
+  env: &pre-conditions-env-global
+    - WORKSPACE
+  python: &pre-conditions-python
+
 executors:
   shell: &shell
     path: /bin/sh
     options: -c
+  # python: &python
+  #   path: $WORKSPACE/.venv/bin/python
+  #   options: -u
 
 tasks:
   build:
+    cwd: ...
     executor: *shell
-    cmd: |
-      /home/yul/dev/personal/jk/.venv/bin/python -m build . --wheel
+    cmd: !include 'cmake-c'
+    # script: !include 'python'
+    # script: /path/to/script.sh
     pre-conditions:
       env:
-        - WORKSPACE
-        # - JK_UNDEFINED
-      validators:
-        - ./project-env-valid.sh
+        # <<: *pre-conditions-env-global
+        key: value
+# - WORKSPACE
+# - PROJECT_NAME
+# env: !import 'cmake-c':
+# - test
+#
+      # validators:
+      #   - '[ "$PWD" = "$WORKSPACE" ]'
+        # - ./project-env-valid.sh
+    on_success: # -> task ?
+      ...
+    on_failure: # -> task ?
+      ...
 
   run:
+    executor: *shell
     cmd: echo run
+
+  config:
+    executor: *shell
+    cmd: echo config
+    pre-conditions:
+    #   env:
+    #     - WORKSPACE
+    #     - PROJECT_NAME
+      validators:
+        - '[ "$PWD" = "$WORKSPACE" ]'
