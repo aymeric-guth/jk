@@ -25,6 +25,48 @@ class ValidationError(Exception):
     ...
 
 
+class Env:
+    def __init__(self):
+        self._registry: dict[str, Any] = {k: v for k, v in os.environ.items()}
+        if "JK_LIBDIR" not in self._registry:
+            self._registry.get("HOME")
+            os.getenv("HOME")
+            self._registry.update({"JK_LIBDIR": pathlib.Path(__file__).parent})
+            logging.warning(
+                f"JK_LIBDIR is not defined, using default: {self._registry['JK_LIBDIR']}"
+            )
+            return
+        libdir = pathlib.Path(self._registry["JK_LIBDIR"])
+        if not libdir.exists() or not libdir.is_dir():
+            raise SystemExit(f"JK_LIBDIR={libdir!s} is not a valid path")
+        self._registry["JK_LIBDIR"] = libdir
+
+    @property
+    def libdir(self) -> pathlib.Path:
+        return self._registry["JK_LIBDIR"]
+
+    @libdir.setter
+    def libdir(self, value: Any) -> None:
+        raise TypeError("libdir is read-only")
+
+    def get(self, identifier: str) -> str:
+        value = self._registry.get(identifier)
+        if value is None:
+            raise RuntimeError(f"{identifier=} is not defined")
+        return value
+
+    def query(self, varname: str) -> bool:
+        value = self._registry.get(varname)
+        if value is not None:
+            return True
+        return False
+
+    def set(self, identifier: str, value: str) -> None:
+        prev = self._registry.get(identifier)
+        if not prev or value != prev:
+            self._registry.update({identifier: value})
+
+
 @dataclass(frozen=True, repr=True)
 class Cmd:
     value: str
@@ -118,6 +160,7 @@ def get_verb(prompt: list[str]) -> str:
 
 # pp = ppprint.PrettyPrinter(indent=4, compact=False)
 pp = lambda o: ppprint.pformat(o, indent=4, width=140)
+env = Env()
 
 
 def main() -> int:
@@ -128,12 +171,17 @@ def main() -> int:
     ### user-input
     verb = get_verb(sys.argv)
 
-    jk_local_config = os.getenv("JK_LOCAL_CONFIG")
-    if jk_local_config is None:
-        jk_local_config = ".jk.yml"
+    if not env.get("JK_LOCAL_CONFIG"):
+        jk_local_config = pathlib.Path().cwd() / ".jk.yml"
+    elif pathlib.Path(env.get("JK_LOCAL_CONFIG")).exists():
+        jk_local_config = pathlib.Path(env.get("JK_LOCAL_CONFIG"))
+    else:
+        raise SystemExit(
+            f"JK_LOCAL_CONFIG={env.get('JK_LOCAL_CONFIG')} is not a valid path"
+        )
 
     ### config load
-    with open(pathlib.Path().cwd() / jk_local_config) as f:
+    with open(jk_local_config, "r") as f:
         ### yaml format validation for free
         data = load(f, Loader=Loader)
 
