@@ -61,10 +61,30 @@ class Env:
             return True
         return False
 
-    def set(self, identifier: str, value: str) -> None:
+    # value must implement __str__
+    def set(self, identifier: str, value: Any) -> None:
+        logging.info(f"Env.set(indentifier={identifier}, value={value})")
         prev = self._registry.get(identifier)
         if not prev or value != prev:
             self._registry.update({identifier: value})
+
+    def dump(self) -> dict[str, str]:
+        return {k: str(v) for k, v in self._registry.items()}
+
+
+@dataclass(frozen=True, repr=True)
+class Path:
+    value: pathlib.Path
+    raw: str
+
+    @classmethod
+    def from_dict(cls, path: str) -> Self:
+        if "$" in path:
+            path = os.path.expandvars(path)
+        _path = pathlib.Path(path)
+        if not _path.exists():
+            raise ValidationError(f"`path` {path} does not exist")
+        return Path(value=_path, raw=path)
 
 
 @dataclass(frozen=True, repr=True)
@@ -97,6 +117,7 @@ class Executor:
     path: str
     options: str
     quote: bool
+    ctx: Path
 
     @classmethod
     def from_dict(cls, executor: dict[Any, Any]) -> Self:
@@ -108,7 +129,16 @@ class Executor:
         if not os.access(_path, os.X_OK):
             raise SystemExit(f"`executor` {executor} is not executable")
         options = executor.get("options", "")
-        return Executor(path=_path, options=options, quote=executor.get("quote", False))
+        ctx = executor.get("ctx", "")
+        if ctx:
+            _ctx = Path.from_dict(ctx)
+        else:
+            _ctx = Path.from_dict(os.getcwd())
+
+        quote = executor.get("quote", False)
+        if not isinstance(quote, bool):
+            raise ValidationError(f"`quote` is not a boolean: {quote}")
+        return Executor(path=_path, options=options, quote=quote, ctx=_ctx)
 
     def to_sh(self) -> list[str]:
         return [self.path, *shlex.split(self.options)]
@@ -241,7 +271,8 @@ def main() -> int:
     logging.info(f"task={pp(task)}")
     logging.info(f"cmd={task.to_sh()}")
 
-    proc = subprocess.Popen([*task.to_sh()], env=os.environ)
+    env.set("PWD", str(task.executor.ctx.value))
+    proc = subprocess.Popen([*task.to_sh()], env=env.dump())
     while proc.poll() is None:
         ...
     return proc.returncode
