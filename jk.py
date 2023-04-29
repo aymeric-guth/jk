@@ -12,17 +12,27 @@ from typing import Self
 
 # import ipdb
 from yaml import CLoader as Loader, load
+from rich.logging import RichHandler
+import rich.repr
 
 
 __version__ = "0.0.1"
 loglevel = os.getenv("JK_LOGLEVEL")
 if not loglevel:
     loglevel = logging.ERROR
-logging.basicConfig(level=loglevel)
+FORMAT = "%(message)s"
+logging.basicConfig(
+    level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+)
 
 
 class ValidationError(Exception):
     ...
+
+
+class UndefinedIdentifier:
+    def __bool__(self) -> bool:
+        return False
 
 
 class Env:
@@ -55,9 +65,9 @@ class Env:
             raise RuntimeError(f"{identifier=} is not defined")
         return value
 
-    def query(self, varname: str) -> bool:
-        value = self._registry.get(varname)
-        if value is not None:
+    def query(self, identifier: str) -> bool:
+        value = self._registry.get(identifier, UndefinedIdentifier())
+        if not isinstance(value, UndefinedIdentifier):
             return True
         return False
 
@@ -70,6 +80,11 @@ class Env:
 
     def dump(self) -> dict[str, str]:
         return {k: str(v) for k, v in self._registry.items()}
+
+    def __repr__(self) -> str:
+        _env = [f"{k}={v}" for k, v in self._registry.items()]
+        _env.sort()
+        return "Env({})".format(", ".join(_env))
 
 
 @dataclass(frozen=True, repr=True)
@@ -173,13 +188,6 @@ class Task:
             return [*self.executor.to_sh(), *self.cmd.to_sh()]
 
 
-def pprint(d: dict[Any, Any]) -> str:
-    try:
-        return json.dumps(d, indent=4)
-    except json.JSONDecodeError:
-        return str(d)
-
-
 def check_sh_identifier(identifier: str) -> str:
     return identifier
 
@@ -188,8 +196,6 @@ def get_verb(prompt: list[str]) -> str:
     return prompt[1]
 
 
-# pp = ppprint.PrettyPrinter(indent=4, compact=False)
-pp = lambda o: ppprint.pformat(o, indent=4, width=140)
 env = Env()
 
 
@@ -201,21 +207,22 @@ def main() -> int:
     ### user-input
     verb = get_verb(sys.argv)
 
-    if not env.get("JK_LOCAL_CONFIG"):
-        jk_local_config = pathlib.Path().cwd() / ".jk.yml"
+    if not env.query("JK_LOCAL_CONFIG"):
+        env.set("JK_LOCAL_CONFIG", pathlib.Path().cwd() / ".jk.yml")
+    # TODO check .yml, check valid yaml
     elif pathlib.Path(env.get("JK_LOCAL_CONFIG")).exists():
-        jk_local_config = pathlib.Path(env.get("JK_LOCAL_CONFIG"))
+        env.set("JK_LOCAL_CONFIG", pathlib.Path(env.get("JK_LOCAL_CONFIG")))
     else:
         raise SystemExit(
             f"JK_LOCAL_CONFIG={env.get('JK_LOCAL_CONFIG')} is not a valid path"
         )
 
     ### config load
-    with open(jk_local_config, "r") as f:
+    with open(env.get("JK_LOCAL_CONFIG"), "r") as f:
         ### yaml format validation for free
         data = load(f, Loader=Loader)
 
-    logging.info(f"config={pprint(data)}")
+    logging.info(f"config={data}")
 
     ### config level sanity check
     if not (executors := data.get("executors", "")):
@@ -228,13 +235,11 @@ def main() -> int:
     if len(tasks) < 1:
         raise SystemExit("at least 1 `task` must be defined")
 
-    logging.info(f"tasks={pprint(tasks)}")
+    logging.info(f"{tasks=}")
 
     ### executors validation
     executors = [Executor.from_dict(executor) for executor in executors.values()]
-    logging.info(
-        "executors={}".format("\n".join([repr(executor) for executor in executors]))
-    )
+    logging.info(f"{executors=}")
 
     ### match user `verb` against config
     if verb not in {i for i in tasks}:
@@ -242,13 +247,13 @@ def main() -> int:
 
     ### sanity check `cmd` is defined for `verb`
     task = Task.from_dict(verb=verb, task=tasks.get(verb))
-    logging.info(f"task={pp(task)}")
+    logging.info(f"{task=}")
 
     ### pre-condition
     logging.info(f"{task.pre_conditions=}")
 
     ### pre-conditions, env
-    logging.info(f"env={pp(task.pre_conditions.env)}")
+    logging.info(f"pre_conditions.env={task.pre_conditions.env}")
     for identifier in task.pre_conditions.env:
         logging.info(f"{identifier=}")
         if not os.getenv(check_sh_identifier(identifier)):
@@ -258,7 +263,7 @@ def main() -> int:
 
     ### pre-conditions, validators
     for validator in task.pre_conditions.validators:
-        logging.info(f"validator={pp(validator)}")
+        logging.info(f"validator={validator}")
         proc = subprocess.Popen(["sh", "-c", validator], env=os.environ)
         while proc.poll() is None:
             ...
@@ -268,11 +273,13 @@ def main() -> int:
             )
 
     ### task execution
-    logging.info(f"task={pp(task)}")
+    logging.info(f"{task=}")
     logging.info(f"cmd={task.to_sh()}")
+    logging.info(f"{env=}")
 
-    env.set("PWD", str(task.executor.ctx.value))
-    proc = subprocess.Popen([*task.to_sh()], env=env.dump())
+    proc = subprocess.Popen(
+        [*task.to_sh()], env=env.dump(), cwd=task.executor.ctx.value
+    )
     while proc.poll() is None:
         ...
     return proc.returncode
