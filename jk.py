@@ -1,19 +1,15 @@
+from typing import Any, Self
 import os
 import sys
 import subprocess
 import shlex
 import logging
 from dataclasses import dataclass
-from typing import Any
-import json
-import pprint as ppprint
 import pathlib
-from typing import Self
 
 # import ipdb
 from yaml import CLoader as Loader, load
 from rich.logging import RichHandler
-import rich.repr
 
 
 __version__ = "0.0.1"
@@ -22,7 +18,7 @@ if not loglevel:
     loglevel = logging.ERROR
 FORMAT = "%(message)s"
 logging.basicConfig(
-    level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+    level=loglevel, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
 )
 
 
@@ -196,10 +192,10 @@ def get_verb(prompt: list[str]) -> str:
     return prompt[1]
 
 
-env = Env()
-
-
 def main() -> int:
+    ### harvest caller's environment
+    env = Env()
+
     ### sanity-check
     if len(sys.argv) != 2:
         raise SystemExit("Usage: jk <command>")
