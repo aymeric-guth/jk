@@ -6,9 +6,10 @@ import shlex
 import logging
 from dataclasses import dataclass
 import pathlib
+import collections
 
 # import ipdb
-from yaml import CLoader as Loader, load
+import yaml
 from rich.logging import RichHandler
 
 
@@ -20,6 +21,8 @@ FORMAT = "%(message)s"
 logging.basicConfig(
     level=loglevel, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
 )
+
+YamlNode = yaml.nodes.ScalarNode | yaml.nodes.MappingNode | yaml.nodes.SequenceNode
 
 
 class ValidationError(Exception):
@@ -89,7 +92,7 @@ class Path:
     raw: str
 
     @classmethod
-    def from_dict(cls, path: str) -> Self:
+    def from_str(cls, path: str) -> Self:
         if "$" in path:
             path = os.path.expandvars(path)
         _path = pathlib.Path(path)
@@ -103,7 +106,7 @@ class Cmd:
     value: str
 
     @classmethod
-    def from_dict(cls, cmd: str) -> Self:
+    def from_str(cls, cmd: str) -> Self:
         return Cmd(value=cmd.rstrip().lstrip())
 
     def to_sh(self) -> list[str]:
@@ -142,9 +145,9 @@ class Executor:
         options = executor.get("options", "")
         ctx = executor.get("ctx", "")
         if ctx:
-            _ctx = Path.from_dict(ctx)
+            _ctx = Path.from_str(ctx)
         else:
-            _ctx = Path.from_dict(os.getcwd())
+            _ctx = Path.from_str(os.getcwd())
 
         quote = executor.get("quote", False)
         if not isinstance(quote, bool):
@@ -172,7 +175,7 @@ class Task:
             raise ValidationError(f"`executor` is not defined for `task` {task}")
         return Task(
             verb=verb,
-            cmd=Cmd.from_dict(cmd),
+            cmd=Cmd.from_str(cmd),
             executor=Executor.from_dict(executor),
             pre_conditions=PreConditions.from_dict(task.get("pre-conditions", {})),
         )
@@ -182,6 +185,27 @@ class Task:
             return [*self.executor.to_sh(), self.cmd.value]
         else:
             return [*self.executor.to_sh(), *self.cmd.to_sh()]
+
+
+def visit(root: YamlNode) -> list[tuple[YamlNode, YamlNode]]:
+    queue: collections.deque[YamlNode] = collections.deque([root])
+    res: list[tuple[YamlNode, YamlNode]] = []
+    last: Optional[YamlNode] = None
+    node: YamlNode
+
+    while queue:
+        node = queue.popleft()
+        if isinstance(node, yaml.ScalarNode) and node.tag == "!include":
+            assert last is not None
+            res.append((last, node))
+        elif isinstance(node, yaml.SequenceNode):
+            for child in node.value:
+                queue.append(child)
+        elif isinstance(node, yaml.MappingNode):
+            for k, v in node.value:
+                queue.extend((k, v))
+        last = node
+    return res
 
 
 def check_sh_identifier(identifier: str) -> str:
@@ -216,7 +240,25 @@ def main() -> int:
     ### config load
     with open(env.get("JK_LOCAL_CONFIG"), "r") as f:
         ### yaml format validation for free
-        data = load(f, Loader=Loader)
+        root = yaml.compose(f, yaml.CLoader)
+
+    ### pre-processing for !include
+    tags = visit(root)
+    for parent, node in tags:
+        _path = env.libdir / f"{parent.value}.yml"
+        logging.info(f"{_path=}")
+        assert _path.exists(), f"{_path!s} does not exist"
+        assert _path.is_file(), f"{_path!s} is not a file"
+        with open(_path) as f:
+            _include = yaml.load(f, yaml.CLoader)
+            logging.info(f"{_include=}")
+            assert (
+                _include.get(node.value, None) is not None
+            ), f"could not find `{node.value}` in {_path}"
+            node.value = _include[node.value]
+            node.tag = "tag:yaml.org,2002:str"
+
+    data = yaml.load(yaml.serialize(root), yaml.CLoader)
 
     logging.info(f"config={data}")
 
