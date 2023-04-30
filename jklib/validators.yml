@@ -1,6 +1,7 @@
 ---
-global: &global
+global:
   - '[ "$PWD" = "$WORKSPACE" ]'
+
 python-venv-exists:
   # - <<: *global
   - '[ -f .venv/bin/python ]'
