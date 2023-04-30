@@ -1,4 +1,4 @@
-from typing import Any, Self
+from typing import Any, Self, Optional
 import os
 import sys
 import subprocess
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import pathlib
 import collections
 
-# import ipdb
+import ipdb
 import yaml
 from rich.logging import RichHandler
 
@@ -58,7 +58,7 @@ class Env:
     def libdir(self, value: Any) -> None:
         raise TypeError("libdir is read-only")
 
-    def get(self, identifier: str) -> str:
+    def get(self, identifier: str) -> Any:
         value = self._registry.get(identifier)
         if value is None:
             raise RuntimeError(f"{identifier=} is not defined")
@@ -195,6 +195,7 @@ def visit(root: YamlNode) -> list[tuple[YamlNode, YamlNode]]:
 
     while queue:
         node = queue.popleft()
+        logging.info(f"{node=}")
         if isinstance(node, yaml.ScalarNode) and node.tag == "!include":
             assert last is not None
             res.append((last, node))
@@ -204,8 +205,62 @@ def visit(root: YamlNode) -> list[tuple[YamlNode, YamlNode]]:
         elif isinstance(node, yaml.MappingNode):
             for k, v in node.value:
                 queue.extend((k, v))
-        last = node
+            last = node
     return res
+
+
+def load_includes(path: pathlib.Path, env: Env):
+    assert path.exists(), f"{path!s} does not exist"
+    assert path.is_file(), f"{path!s} is not a file"
+
+    with open(path) as f:
+        root = yaml.compose(f)
+
+    for parent, node in visit(root):
+        if isinstance(parent.value[0], tuple):
+            _name = parent.value[0][0].value
+        elif isinstance(parent, yaml.MappingNode):
+            ...
+        else:
+            raise SystemExit(f"parent.value[0] is not a tuple: {parent=}")
+            logging.error(f"{parent.value[0]=}")
+            _name = parent.value[0].value[0]
+
+        # try:
+        #     _name = parent.value[0][0].value
+        # except Exception:
+        #     ipdb.set_trace()
+        #     print()
+        #     _name = ""
+
+        if _name not in {
+            "cmd",
+            "env",
+            "pre-conditions",
+            "executor",
+            "validators",
+        }:
+            _path = env.libdir / "tasks.yml"
+        elif _name == "executor":
+            _path = env.libdir / "executors.yml"
+        else:
+            _path = env.libdir / f"{parent.value}.yml"
+
+        _node = load_includes(_path, env)
+        for k, v in _node.value:
+            if node.value == k.value:
+                for i, (_k, _v) in enumerate(parent.value):
+                    if _v is node:
+                        parent.value[i] = v
+
+                # ipdb.set_trace()
+                # node.value = v.value
+                # node.tag = v.tag
+                break
+        else:
+            raise ValidationError(f"Could not find {node.value} in {parent.value}")
+
+    return root
 
 
 def check_sh_identifier(identifier: str) -> str:
@@ -238,28 +293,9 @@ def main() -> int:
         )
 
     ### config load
-    with open(env.get("JK_LOCAL_CONFIG"), "r") as f:
-        ### yaml format validation for free
-        root = yaml.compose(f, yaml.CLoader)
-
     ### pre-processing for !include
-    tags = visit(root)
-    for parent, node in tags:
-        _path = env.libdir / f"{parent.value}.yml"
-        logging.info(f"{_path=}")
-        assert _path.exists(), f"{_path!s} does not exist"
-        assert _path.is_file(), f"{_path!s} is not a file"
-        with open(_path) as f:
-            _include = yaml.load(f, yaml.CLoader)
-            logging.info(f"{_include=}")
-            assert (
-                _include.get(node.value, None) is not None
-            ), f"could not find `{node.value}` in {_path}"
-            node.value = _include[node.value]
-            node.tag = "tag:yaml.org,2002:str"
-
+    root = load_includes(env.get("JK_LOCAL_CONFIG"), env)
     data = yaml.load(yaml.serialize(root), yaml.CLoader)
-
     logging.info(f"config={data}")
 
     ### config level sanity check
