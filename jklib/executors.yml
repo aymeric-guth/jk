@@ -3,12 +3,10 @@ sh:
   path: /bin/sh
   options: -c
   quote: true
-
 python:
   path: $WORKSPACE/.venv/bin/python
   options: -u
   quote: false
-
 zsh:
   path: /opt/local/bin/zsh
   options: -c

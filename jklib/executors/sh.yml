@@ -1,5 +1,0 @@
----
-sh:
-  path: /bin/sh
-  options: -c
-  quote: true

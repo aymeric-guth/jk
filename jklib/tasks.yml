@@ -1,0 +1,7 @@
+---
+python-run:
+  executor: !include sh
+  cmd: !include python-run
+  pre-conditions:
+    env: !include python-dev
+    validators: !include global

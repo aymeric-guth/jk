@@ -1,0 +1,21 @@
+---
+python-run: |
+  echo coucou
+python-build: |
+  -m build . --wheel
+python-pip-install: |
+  -m pip install \
+  --force-reinstall \
+  dist/jk-0.0.1-py3-none-any.whl
+python-clean: |
+  ...
+c-cmake:
+  cmake \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+    -DCMAKE_INSTALL_PREFIX="$WORKSPACE"/usr \
+    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Debug} \
+    -S . \
+    -B ./build \
+    -G Ninja && \
+  ninja -C ./build && \
+  ninja -C ./build install
