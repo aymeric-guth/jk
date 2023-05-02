@@ -38,9 +38,9 @@ class Env:
     def __init__(self):
         self._registry: dict[str, Any] = {k: v for k, v in os.environ.items()}
         if "JK_LIBDIR" not in self._registry:
-            self._registry.get("HOME")
-            os.getenv("HOME")
-            self._registry.update({"JK_LIBDIR": pathlib.Path(__file__).parent})
+            self._registry.update(
+                {"JK_LIBDIR": pathlib.Path(__file__).parent / "jklib"}
+            )
             logging.warning(
                 f"JK_LIBDIR is not defined, using default: {self._registry['JK_LIBDIR']}"
             )
@@ -293,6 +293,9 @@ def main() -> int:
         raise SystemExit(
             f"JK_LOCAL_CONFIG={env.get('JK_LOCAL_CONFIG')} is not a valid path"
         )
+
+    logging.info(f"JK_LIBDIR={env.libdir}")
+    logging.info(f"JK_LOCAL_CONFIG={env.get('JK_LOCAL_CONFIG')}")
 
     ### config load
     ### pre-processing for !include
