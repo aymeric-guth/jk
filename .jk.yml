@@ -1,73 +1,73 @@
 ---
-pre-conditions: &pre-conditions-python
-  env:
-    WORKSPACE:
-    PROJECT_NAME:
-    VIRTUAL_ENV:
-  validators:
-    - '[ "$PWD" = "$WORKSPACE" ]'
+# pre-conditions: &pre-conditions-python
+#   env:
+#     WORKSPACE:
+#     PROJECT_NAME:
+#     VIRTUAL_ENV:
+#   validators:
+#     - '[ "$PWD" = "$WORKSPACE" ]'
 
 executors:
-  sh: &sh
-    path: /bin/sh
-    options: -c
-    quote: true
+  # sh: &sh
+  #   path: /bin/sh
+  #   options: -c
+  #   quote: true
   python: &python
     path: $WORKSPACE/.venv/bin/python
     options: -u
     quote: false
-  zsh: &zsh
-    path: /opt/local/bin/zsh
-    options: -c
-    quote: true
+  # zsh: &zsh
+  #   path: /opt/local/bin/zsh
+  #   options: -c
+  #   quote: true
 
 tasks:
-  run:
-    executor: *sh
-    cmd: echo run
-    pre-conditions:
-      <<: *pre-conditions-python
-      validators:
-        - '[ "$PWD" = "$WORKSPACE" ]'
-        - '[ -f .venv/bin/python ]'
+  # run:
+  #   executor: *sh
+  #   cmd: echo run
+  #   pre-conditions:
+  #     <<: *pre-conditions-python
+  #     validators:
+  #       - '[ "$PWD" = "$WORKSPACE" ]'
+  #       - '[ -f .venv/bin/python ]'
 
-  deploy:
-    executor: *python
-    cmd: -m pip install --force-reinstall dist/jk-0.0.1-py3-none-any.whl
-    pre-conditions:
-      <<: *pre-conditions-python
-      validators:
-        - '[ "$PWD" = "$WORKSPACE" ]'
-        - '[ -f .venv/bin/python ]'
+  # deploy:
+  #   executor: *python
+  #   cmd: -m pip install --force-reinstall dist/jk-0.0.1-py3-none-any.whl
+  #   pre-conditions:
+  #     <<: *pre-conditions-python
+  #     validators:
+  #       - '[ "$PWD" = "$WORKSPACE" ]'
+  #       - '[ -f .venv/bin/python ]'
 
-  build:
-    executor: *python
-    cmd: !include python-build
-    pre-conditions:
-      <<: *pre-conditions-python
-      validators:
-        - '[ "$PWD" = "$WORKSPACE" ]'
-        - '[ -f .venv/bin/python ]'
+  build: !include python-run
+    # executor: *python
+    # cmd: !include python-run
+    # pre-conditions: !include python-dev
+      # <<: *pre-conditions-python
+      # validators:
+      #   - '[ "$PWD" = "$WORKSPACE" ]'
+      #   - '[ -f .venv/bin/python ]'
 
-  config:
-    executor: *sh
-    cmd: $EDITOR .jk.yml
-    pre-conditions: *pre-conditions-python
+  # config:
+  #   executor: *sh
+  #   cmd: $EDITOR .jk.yml
+  #   pre-conditions: *pre-conditions-python
 
-  clean:
-    executor: *sh
-    cmd: !include python-clean
-    pre-conditions: *pre-conditions-python
+  # clean:
+  #   executor: *sh
+  #   cmd: !include python-clean
+  #   pre-conditions: *pre-conditions-python
 
-  env:
-    executor: *zsh
-    cmd: |
-      : \
-      && [ -d .venv ] && rm -rf .venv \
-      && python3 -m virtualenv .venv \
-      && [ -f requirements.txt ] \
-      && .venv/bin/python -m pip install -r requirements.txt \
-      && [ -n "${commands[direnv]}" ] \
-      && direnv reload \
-      && :
-    pre-conditions: *pre-conditions-python
+  # env:
+  #   executor: *zsh
+  #   cmd: |
+  #     : \
+  #     && [ -d .venv ] && rm -rf .venv \
+  #     && python3 -m virtualenv .venv \
+  #     && [ -f requirements.txt ] \
+  #     && .venv/bin/python -m pip install -r requirements.txt \
+  #     && [ -n "${commands[direnv]}" ] \
+  #     && direnv reload \
+  #     && :
+  #   pre-conditions: *pre-conditions-python

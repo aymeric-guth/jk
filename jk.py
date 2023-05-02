@@ -196,6 +196,7 @@ def visit(root: YamlNode) -> list[tuple[YamlNode, YamlNode]]:
     while queue:
         node = queue.popleft()
         logging.info(f"{node=}")
+
         if isinstance(node, yaml.ScalarNode) and node.tag == "!include":
             assert last is not None
             res.append((last, node))
@@ -206,6 +207,7 @@ def visit(root: YamlNode) -> list[tuple[YamlNode, YamlNode]]:
             for k, v in node.value:
                 queue.extend((k, v))
             last = node
+
     return res
 
 
