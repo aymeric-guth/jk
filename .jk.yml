@@ -58,4 +58,10 @@ tasks:
       && rm -f *.o *.so *.dylib *.out \
       && rm -rf .clean \
       && rm -rf build \
+      && rm -rf .cache \
+      && rm -rf *.egg-info \
+      && rm -rf usr \
       && :
+    pre-conditions:
+      validators:
+        - '[ $PWD = $WORKSPACE ]'
