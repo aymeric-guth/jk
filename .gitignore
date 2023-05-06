@@ -12,3 +12,5 @@ Taskfile.yml
 /dist
 
 a.out
+/usr
+.cache
