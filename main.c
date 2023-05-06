@@ -14,7 +14,7 @@
 
 int TERMX;
 int TERMY;
-int running;
+int running = 1;
 
 typedef struct {
     float x, y;
@@ -63,7 +63,7 @@ int main()
     /* Q q = { .head = 0, .tail = 0, .size = QUEUE_SIZE, .data = qp}; */
     /* pthread_create(&_kb_input, NULL, kb_input, &q); */
 
-    while (1) {
+    while (running) {
         int c = getchar();
         printf("%d\n", c);
     }
