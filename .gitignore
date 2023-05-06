@@ -10,3 +10,5 @@ Taskfile.yml
 /_jk
 /build
 /dist
+
+a.out

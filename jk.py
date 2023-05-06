@@ -186,6 +186,9 @@ class Task:
         else:
             return [*self.executor.to_sh(), *self.cmd.to_sh()]
 
+    def __str__(self) -> str:
+        return f"{self.verb}: {self.cmd}\n"
+
 
 def visit(root: YamlNode) -> list[tuple[YamlNode, YamlNode]]:
     queue: collections.deque[YamlNode] = collections.deque([root])
@@ -320,8 +323,15 @@ def main() -> int:
     executors = [Executor.from_dict(executor) for executor in executors.values()]
     logging.info(f"{executors=}")
 
+    sys_tasks = {
+        "list",
+    }
     ### match user `verb` against config
-    if verb not in {i for i in tasks}:
+    if verb in sys_tasks:
+        for name in tasks:
+            sys.stdout.write(f"{name}: ``\n")
+        return 0
+    elif verb not in {i for i in tasks}:
         raise SystemExit(f"`verb`: {verb} is not defined in config")
 
     ### sanity check `cmd` is defined for `verb`
