@@ -76,3 +76,11 @@ jk build
 jk run
 jk clean
 ```
+
+
+### REFS
+
+https://web.archive.org/web/20170407122137/http://cc.byexamples.com/2007/04/08/non-blocking-user-input-in-loop-without-ncurses/
+https://stackoverflow.com/questions/717572/how-do-you-do-non-blocking-console-i-o-on-linux-in-c
+https://comp.os.linux.development.apps.narkive.com/29ICAkHE/howto-do-unbuffered-keyboard-input
+
