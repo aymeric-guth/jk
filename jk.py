@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 import pathlib
 import collections
+import time
 
 import ipdb
 import yaml
@@ -164,6 +165,8 @@ class Task:
     cmd: Cmd
     executor: Executor
     pre_conditions: PreConditions
+    on_success: Optional[Self] = None
+    on_failure: Optional[Self] = None
 
     @classmethod
     def from_dict(cls, verb: str, task: dict[Any, Any]) -> Self:
@@ -173,11 +176,22 @@ class Task:
         executor: dict[str, Any] = task.get("executor", "")
         if not executor:
             raise ValidationError(f"`executor` is not defined for `task` {task}")
+
+        on_success = task.get("on-success", None)
+        on_failure = task.get("on-failure", None)
+
+        if on_success is not None:
+            on_success = Task.from_dict("", on_success)
+        if on_failure is not None:
+            on_failure = Task.from_dict("", on_failure)
+
         return Task(
             verb=verb,
             cmd=Cmd.from_str(cmd),
             executor=Executor.from_dict(executor),
             pre_conditions=PreConditions.from_dict(task.get("pre-conditions", {})),
+            on_success=on_success,
+            on_failure=on_failure,
         )
 
     def to_sh(self) -> list[str]:
@@ -185,6 +199,11 @@ class Task:
             return [*self.executor.to_sh(), self.cmd.value]
         else:
             return [*self.executor.to_sh(), *self.cmd.to_sh()]
+
+    def run(self, env: Env) -> subprocess.Popen:
+        return subprocess.Popen(
+            [*self.to_sh()], env=env.dump(), cwd=self.executor.ctx.value
+        )
 
     def __str__(self) -> str:
         return f"{self.verb}: {self.cmd}\n"
@@ -274,6 +293,35 @@ def check_sh_identifier(identifier: str) -> str:
 
 def get_verb(prompt: list[str]) -> str:
     return prompt[1]
+
+
+def _runner(proc: subprocess.Popen) -> int:
+    try:
+        while 1:
+            time.sleep(0.01)
+            if proc.poll() is not None:
+                break
+
+    except Exception as err:
+        sys.stderr.write(str(err) + "\n")
+        return 1
+    except KeyboardInterrupt:
+        return 0
+
+    return proc.returncode
+
+
+def runner(task: Task, env: Env) -> int:
+    rc = _runner(task.run(env))
+
+    if rc == 0 and task.on_success is not None:
+        sys.stderr.write("on_success\n")
+        return _runner(task.on_success.run(env))
+    elif rc != 0 and task.on_failure is not None:
+        sys.stderr.write("on_failure\n")
+        return _runner(task.on_failure.run(env))
+    sys.stderr.write("no_handler\n")
+    return rc
 
 
 def main() -> int:
@@ -366,12 +414,7 @@ def main() -> int:
     logging.info(f"cmd={task.to_sh()}")
     logging.info(f"{env=}")
 
-    proc = subprocess.Popen(
-        [*task.to_sh()], env=env.dump(), cwd=task.executor.ctx.value
-    )
-    while proc.poll() is None:
-        ...
-    return proc.returncode
+    return runner(task, env)
 
 
 if __name__ == "__main__":

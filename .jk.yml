@@ -6,7 +6,29 @@ executors:
     quote: true
 
 tasks:
-  run:
+
+  run: &run
     executor: *sh
     cmd: |
-      echo coucou
+      $WORKSPACE/a.out
+    on-success:
+      executor: *sh
+      cmd: |
+        stty sane
+  r: *run
+
+  build: &build
+    executor: *sh
+    cmd: |
+      clang main.c -o a.out -Wl, -lm
+  b: *build
+
+  config: &config
+    executor: *sh
+    cmd: |
+      $EDITOR $WORKSPACE/.jk.yml
+    pre-conditions:
+      env:
+        EDITOR:
+        WORKSPACE:
+  cfg: *config
