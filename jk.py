@@ -301,7 +301,6 @@ def _runner(proc: subprocess.Popen) -> int:
             time.sleep(0.01)
             if proc.poll() is not None:
                 break
-
     except Exception as err:
         sys.stderr.write(str(err) + "\n")
         return 1
@@ -320,7 +319,9 @@ def runner(task: Task, env: Env) -> int:
     elif rc != 0 and task.on_failure is not None:
         sys.stderr.write("on_failure\n")
         return _runner(task.on_failure.run(env))
+
     sys.stderr.write("no_handler\n")
+
     return rc
 
 

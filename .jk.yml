@@ -10,7 +10,12 @@ tasks:
   run: &run
     executor: *sh
     cmd: |
-      $WORKSPACE/a.out
+      $WORKSPACE/usr/bin/jk-wrapper
+    pre-conditions:
+      env:
+        WORKSPACE:
+      validators:
+        - '[ -x $WORKSPACE/usr/bin/jk-wrapper ]'
     on-success:
       executor: *sh
       cmd: |
@@ -20,7 +25,20 @@ tasks:
   build: &build
     executor: *sh
     cmd: |
-      clang main.c -o a.out -Wl, -lm
+      : \
+      && cmake \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        -DCMAKE_INSTALL_PREFIX="$WORKSPACE"/usr \
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Debug} \
+        -S . \
+        -B ./build \
+        -G Ninja \
+      && ninja -C ./build \
+      && ninja -C ./build install \
+      && :
+    pre-conditions:
+      env:
+        WORKSPACE:
   b: *build
 
   config: &config
@@ -32,3 +50,12 @@ tasks:
         EDITOR:
         WORKSPACE:
   cfg: *config
+
+  clean: &clean
+    executor: *sh
+    cmd: |
+      : \
+      && rm -f *.o *.so *.dylib *.out \
+      && rm -rf .clean \
+      && rm -rf build \
+      && :
