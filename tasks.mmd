@@ -1,0 +1,71 @@
+flowchart TD
+
+	subgraph T1[PreTask]
+		D1(Defined?)
+		D1 --> Y1(Yes)
+		D1 --> N1(No)
+		Y1 --> E1(Exec)
+		E1 --> S1(Status)
+		S1 --> SY1(Success)
+		S1 --> SN1(Failure)
+		N1 --> SY1
+        SN1 --> C1(Crash)
+	end
+
+	subgraph T2[Task]
+		D2(Defined?)
+		D2 --> Y2(Yes)
+		D2 --> N2(No)
+		Y2 --> E2(Exec)
+		E2 --> S2(Status)
+		S2 --> SY2(Success)
+		S2 --> SN2(Failure)
+        N2 --> C2(Crash)
+	end
+	
+	subgraph T3[OnSuccess]
+		D3(Defined?)
+		D3 --> Y3(Yes)
+		D3 --> N3(No)
+		Y3 --> E3(Exec)
+		E3 --> S3(Status)
+		S3 --> SY3(Success)
+		S3 --> SN3(Failure)
+        N3 --> SY3
+	end
+	
+	subgraph T4[OnFailure]
+		D4(Defined?)
+		D4 --> Y4(Yes)
+		D4 --> N4(No)
+		Y4 --> E4(Exec)
+		E4 --> S4(Status)
+		S4 --> SY4(Success)
+		S4 --> SN4(Failure)
+        N4 --> C4(Crash)
+	end
+	
+	subgraph T5[PostTask]
+    	D5(Defined?)
+		D5 --> Y5(Yes)
+		D5 --> N5(No)
+		Y5 --> E5(Exec)
+		E5 --> S5(Status)
+		S5 --> SY5(Success)
+		S5 --> SN5(Failure)
+        SN5 --> C5(Crash)
+    end
+
+    SY1 --> T2
+
+	SY2 --> T3
+    SN2 --> T4
+	
+    SY3 --> T5
+	SN3 --> T5
+
+    SY4 --> T5
+	SN4 --> T5
+
+	N5 --> R1(Return Last Status)
+    SY5 --> R1
