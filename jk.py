@@ -170,6 +170,20 @@ class Task:
     # pre_task: Optional[Any] = None
     # post_task: Optional[Any] = None
 
+    @staticmethod
+    def inject_executor(tasks: dict[Any, Any], key: str) -> dict[Any, Any]:
+        task = tasks.get(key, None)
+        if task is None:
+            # task is not defined
+            return tasks
+        elif isinstance(task, str):
+            # assume it is a cmd
+            tasks.update({key: {"cmd": task, "executor": tasks.get("executor", None)}})
+        elif task.get("executor", None) is None:
+            # inject parent's executor
+            task.update({"executor": tasks.get("executor", None)})
+        return tasks
+
     @classmethod
     def from_dict(cls, verb: str, task: dict[Any, Any]) -> Any:
         cmd = task.get("cmd", "")
@@ -179,19 +193,16 @@ class Task:
         if not executor:
             raise ValidationError(f"`executor` is not defined for `task` {task}")
 
+        Task.inject_executor(task, "on-success")
+        Task.inject_executor(task, "on-failure")
+
         on_success = task.get("on-success", None)
         on_failure = task.get("on-failure", None)
-        # pre_task = task.get("pre-task", None)
-        # post_task = task.get("post-task", None)
 
         if on_success is not None:
             on_success = Task.from_dict("", on_success)
         if on_failure is not None:
             on_failure = Task.from_dict("", on_failure)
-        # if pre_task is not None:
-        #     pre_task = Task.from_dict("", pre_task)
-        # if post_task is not None:
-        #     post_task = Task.from_dict("", post_task)
 
         return Task(
             verb=verb,
@@ -220,15 +231,69 @@ class Task:
 
 
 @dataclass(frozen=True, repr=True)
+class Task_:
+    executor: Executor
+    cmd: Cmd
+
+    @classmethod
+    def from_dict(cls, task: Optional[dict[Any, Any]]) -> Any:
+        print(f"{task=}")
+        if task is None:
+            return task
+
+        cmd = task.get("cmd", "")
+        if not cmd:
+            raise ValidationError(f"`cmd` is not defined for `task` {task}")
+
+        executor: dict[str, Any] = task.get("executor", "")
+        if not executor:
+            raise ValidationError(f"`executor` is not defined for `task` {task}")
+
+        return Task_(
+            cmd=Cmd.from_str(cmd),
+            executor=Executor.from_dict(executor),
+        )
+
+    def to_sh(self) -> list[str]:
+        if self.executor.quote:
+            return [*self.executor.to_sh(), self.cmd.value]
+        else:
+            return [*self.executor.to_sh(), *self.cmd.to_sh()]
+
+
+@dataclass(frozen=True, repr=True)
 class UserTask:
     verb: str
-    executor: Executor
     pre_conditions: PreConditions
-    task: Task
-    on_success: Optional[Task] = None
-    on_failure: Optional[Task] = None
-    pre_task: Optional[Task] = None
-    post_task: Optional[Task] = None
+    task: Task_
+    on_success: Optional[Task_] = None
+    on_failure: Optional[Task_] = None
+    pre_task: Optional[Task_] = None
+    post_task: Optional[Task_] = None
+
+    @staticmethod
+    def inject_executor(tasks: dict[Any, Any], key: str) -> dict[Any, Any]:
+        task = tasks.get(key, None)
+        if task is not None and (task.get("executor", None) is None):
+            task.update({"executor": tasks.get("executor", None)})
+        return tasks
+
+    @classmethod
+    def from_dict(cls, verb: str, tasks: dict[Any, Any]) -> Any:
+        UserTask.inject_executor(tasks, "on-success")
+        UserTask.inject_executor(tasks, "on-failure")
+        UserTask.inject_executor(tasks, "pre-task")
+        UserTask.inject_executor(tasks, "post-task")
+
+        return UserTask(
+            verb=verb,
+            task=Task_.from_dict(tasks),
+            pre_conditions=PreConditions.from_dict(tasks.get("pre-conditions", {})),
+            on_success=Task_.from_dict(tasks.get("on-success", None)),
+            on_failure=Task_.from_dict(tasks.get("on-failure", None)),
+            pre_task=Task_.from_dict(tasks.get("pre-task", None)),
+            post_task=Task_.from_dict(tasks.get("post-task", None)),
+        )
 
 
 def visit(root: YamlNode) -> list[tuple[YamlNode, YamlNode]]:
@@ -338,14 +403,33 @@ def _runner(proc: subprocess.Popen) -> int:
 
 
 def runner(task: Task, env: Env) -> int:
+    # if task.pre_task is not None:
+    #     sys.stderr.write("pre_task\n")
+    #     rc = _runner(task.pre_task.run(env))
+    #     if rc != 0:
+    #         raise SystemExit(rc)
+
     rc = _runner(task.run(env))
 
     if rc == 0 and task.on_success is not None:
         sys.stderr.write("on_success\n")
-        return _runner(task.on_success.run(env))
+        rc = _runner(task.on_success.run(env))
+        if rc != 0:
+            raise SystemExit(rc)
+
     elif rc != 0 and task.on_failure is not None:
         sys.stderr.write("on_failure\n")
-        return _runner(task.on_failure.run(env))
+        rc = _runner(task.on_failure.run(env))
+        if rc != 0:
+            raise SystemExit(rc)
+
+    # if task.post_task is not None:
+    #     sys.stderr.write("post_task\n")
+    #     last = rc
+    #     rc = _runner(task.post_task.run(env))
+    #     if rc != 0:
+    #         raise SystemExit(rc)
+    #     return last
 
     sys.stderr.write("no_handler\n")
 

@@ -68,10 +68,8 @@ tasks:
 
   test:
     executor: *sh
-    cmd: say test 101 && return 1
+    cmd: say test 1010
     on-success:
-      executor: *sh
-      cmd: say l o l
+      cmd: say congratz
     on-failure:
-      executor: *sh
-      cmd: say not l o l
+      cmd: say l o l
