@@ -1,4 +1,4 @@
-from typing import Any, Any, Optional
+from typing import Any, Optional
 import os
 import sys
 import subprocess

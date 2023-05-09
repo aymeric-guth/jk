@@ -65,3 +65,13 @@ tasks:
     pre-conditions:
       validators:
         - '[ $PWD = $WORKSPACE ]'
+
+  test:
+    executor: *sh
+    cmd: say test 101 && return 1
+    on-success:
+      executor: *sh
+      cmd: say l o l
+    on-failure:
+      executor: *sh
+      cmd: say not l o l
