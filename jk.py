@@ -1,4 +1,4 @@
-from typing import Any, Self, Optional
+from typing import Any, Any, Optional
 import os
 import sys
 import subprocess
@@ -93,7 +93,7 @@ class Path:
     raw: str
 
     @classmethod
-    def from_str(cls, path: str) -> Self:
+    def from_str(cls, path: str) -> Any:
         if "$" in path:
             path = os.path.expandvars(path)
         _path = pathlib.Path(path)
@@ -107,7 +107,7 @@ class Cmd:
     value: str
 
     @classmethod
-    def from_str(cls, cmd: str) -> Self:
+    def from_str(cls, cmd: str) -> Any:
         return Cmd(value=cmd.rstrip().lstrip())
 
     def to_sh(self) -> list[str]:
@@ -120,7 +120,7 @@ class PreConditions:
     validators: list[str]
 
     @classmethod
-    def from_dict(cls, pre_conditions: dict[str, Any]) -> Self:
+    def from_dict(cls, pre_conditions: dict[str, Any]) -> Any:
         return PreConditions(
             env=pre_conditions.get("env", []),
             validators=pre_conditions.get("validators", []),
@@ -135,7 +135,7 @@ class Executor:
     ctx: Path
 
     @classmethod
-    def from_dict(cls, executor: dict[Any, Any]) -> Self:
+    def from_dict(cls, executor: dict[Any, Any]) -> Any:
         path = executor.get("path", "")
         if not path:
             raise ValidationError(f"`path` is not defined for `executor`: {executor}")
@@ -165,11 +165,13 @@ class Task:
     cmd: Cmd
     executor: Executor
     pre_conditions: PreConditions
-    on_success: Optional[Self] = None
-    on_failure: Optional[Self] = None
+    on_success: Optional[Any] = None
+    on_failure: Optional[Any] = None
+    # pre_task: Optional[Any] = None
+    # post_task: Optional[Any] = None
 
     @classmethod
-    def from_dict(cls, verb: str, task: dict[Any, Any]) -> Self:
+    def from_dict(cls, verb: str, task: dict[Any, Any]) -> Any:
         cmd = task.get("cmd", "")
         if not cmd:
             raise ValidationError(f"`cmd` is not defined for `task` {task}")
@@ -179,11 +181,17 @@ class Task:
 
         on_success = task.get("on-success", None)
         on_failure = task.get("on-failure", None)
+        # pre_task = task.get("pre-task", None)
+        # post_task = task.get("post-task", None)
 
         if on_success is not None:
             on_success = Task.from_dict("", on_success)
         if on_failure is not None:
             on_failure = Task.from_dict("", on_failure)
+        # if pre_task is not None:
+        #     pre_task = Task.from_dict("", pre_task)
+        # if post_task is not None:
+        #     post_task = Task.from_dict("", post_task)
 
         return Task(
             verb=verb,
@@ -207,6 +215,18 @@ class Task:
 
     def __str__(self) -> str:
         return f"{self.verb}: {self.cmd}\n"
+
+
+@dataclass(frozen=True, repr=True)
+class UserTask:
+    verb: str
+    executor: Executor
+    pre_conditions: PreConditions
+    task: Task
+    on_success: Optional[Task] = None
+    on_failure: Optional[Task] = None
+    pre_task: Optional[Task] = None
+    post_task: Optional[Task] = None
 
 
 def visit(root: YamlNode) -> list[tuple[YamlNode, YamlNode]]:
@@ -416,6 +436,12 @@ def main() -> int:
     logging.info(f"{env=}")
 
     return runner(task, env)
+
+    # pre-task -> status code
+    # task -> status code
+    # on-success -> status code
+    # on-failure -> status code
+    # post-task -> status code
 
 
 if __name__ == "__main__":
