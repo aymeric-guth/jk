@@ -210,7 +210,9 @@ class Task:
 
     def run(self, env: Env) -> subprocess.Popen:
         return subprocess.Popen(
-            [*self.to_sh()], env=env.dump(), cwd=self.executor.ctx.value
+            [*self.to_sh()],
+            env=env.dump(),
+            cwd=self.executor.ctx.value,
         )
 
     def __str__(self) -> str:
@@ -313,6 +315,11 @@ def check_sh_identifier(identifier: str) -> str:
 
 def get_verb(prompt: list[str]) -> str:
     return prompt[1]
+
+
+def handler(proc: subprocess.Popen) -> tuple[int, list, list]:
+    stdout, stderr = proc.communicate()
+    return proc.returncode, stdout, stderr
 
 
 def _runner(proc: subprocess.Popen) -> int:
