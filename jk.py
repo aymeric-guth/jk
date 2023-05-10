@@ -4,7 +4,7 @@ import sys
 import subprocess
 import shlex
 import logging
-from dataclasses import dataclass
+import dataclasses
 import pathlib
 import collections
 import time
@@ -87,7 +87,19 @@ class Env:
         return "Env({})".format(", ".join(_env))
 
 
-@dataclass(frozen=True, repr=True)
+@dataclasses.dataclass(frozen=True, repr=True)
+class EnvVar:
+    identifier: str
+    value: str
+
+    @classmethod
+    def from_str(cls, identifier: str, value: str) -> Any:
+        assert isinstance(identifier, str)
+        assert isinstance(value, str)
+        return EnvVar(identifier=identifier, value=value)
+
+
+@dataclasses.dataclass(frozen=True, repr=True)
 class Path:
     value: pathlib.Path
     raw: str
@@ -102,7 +114,7 @@ class Path:
         return Path(value=_path, raw=path)
 
 
-@dataclass(frozen=True, repr=True)
+@dataclasses.dataclass(frozen=True, repr=True)
 class Cmd:
     value: str
 
@@ -114,7 +126,7 @@ class Cmd:
         return shlex.split(self.value)
 
 
-@dataclass(frozen=True, repr=True)
+@dataclasses.dataclass(frozen=True, repr=True)
 class PreConditions:
     env: list[str]
     validators: list[str]
@@ -127,12 +139,13 @@ class PreConditions:
         )
 
 
-@dataclass(frozen=True, repr=True)
+@dataclasses.dataclass(frozen=True, repr=True)
 class Executor:
     path: str
     options: str
     quote: bool
     ctx: Path
+    env: Optional[list[EnvVar]] = dataclasses.field(default_factory=list)
 
     @classmethod
     def from_dict(cls, executor: dict[Any, Any]) -> Any:
@@ -150,16 +163,24 @@ class Executor:
         else:
             _ctx = Path.from_str(os.getcwd())
 
+        env = [
+            EnvVar.from_str(identifier, value)
+            for identifier, value in executor.get("env", {}).items()
+        ]
+
         quote = executor.get("quote", False)
         if not isinstance(quote, bool):
             raise ValidationError(f"`quote` is not a boolean: {quote}")
-        return Executor(path=_path, options=options, quote=quote, ctx=_ctx)
+        return Executor(path=_path, options=options, quote=quote, ctx=_ctx, env=env)
 
-    def to_sh(self) -> list[str]:
+    def to_sh(self, env: Optional[Env] = None) -> list[str]:
+        if env is not None and self.env:
+            for env_var in self.env:
+                env.set(env_var.identifier, env_var.value)
         return [self.path, *shlex.split(self.options)]
 
 
-@dataclass(frozen=True, repr=True)
+@dataclasses.dataclass(frozen=True, repr=True)
 class Task:
     verb: str
     cmd: Cmd
@@ -213,15 +234,15 @@ class Task:
             on_failure=on_failure,
         )
 
-    def to_sh(self) -> list[str]:
+    def to_sh(self, env: Optional[Env] = None) -> list[str]:
         if self.executor.quote:
-            return [*self.executor.to_sh(), self.cmd.value]
+            return [*self.executor.to_sh(env), self.cmd.value]
         else:
-            return [*self.executor.to_sh(), *self.cmd.to_sh()]
+            return [*self.executor.to_sh(env), *self.cmd.to_sh()]
 
     def run(self, env: Env) -> subprocess.Popen:
         return subprocess.Popen(
-            [*self.to_sh()],
+            [*self.to_sh(env)],
             env=env.dump(),
             cwd=self.executor.ctx.value,
         )
@@ -230,7 +251,7 @@ class Task:
         return f"{self.verb}: {self.cmd}\n"
 
 
-@dataclass(frozen=True, repr=True)
+@dataclasses.dataclass(frozen=True, repr=True)
 class Task_:
     executor: Executor
     cmd: Cmd
@@ -261,7 +282,7 @@ class Task_:
             return [*self.executor.to_sh(), *self.cmd.to_sh()]
 
 
-@dataclass(frozen=True, repr=True)
+@dataclasses.dataclass(frozen=True, repr=True)
 class UserTask:
     verb: str
     pre_conditions: PreConditions
