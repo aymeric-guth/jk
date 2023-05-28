@@ -7,7 +7,6 @@ __pycache__
 .tmuxp.yaml
 jk.egg-info
 Taskfile.yml
-/_jk
 /build
 /dist
 
