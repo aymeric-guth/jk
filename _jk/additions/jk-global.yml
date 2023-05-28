@@ -1,0 +1,3 @@
+---
+config:
+  jk_path: $JK_LIBDIR
