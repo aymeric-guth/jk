@@ -14,3 +14,4 @@ Taskfile.yml
 a.out
 /usr
 .cache
+.null-ls*
